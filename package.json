@@ -1,0 +1,26 @@
+{
+  "name": "self-optimization-orchestrator",
+  "version": "1.0.0",
+  "description": "Automated GitHub repository health analyzer and improvement orchestrator",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "dashboard"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:dashboard": "npm run dev --workspace=dashboard",
+    "build:backend": "npm run build --workspace=backend",
+    "build:dashboard": "npm run build --workspace=dashboard",
+    "db:migrate": "npm run db:migrate --workspace=backend",
+    "db:studio": "npm run db:studio --workspace=backend"
+  },
+  "keywords": [
+    "github",
+    "automation",
+    "llm",
+    "repository-analysis"
+  ],
+  "author": "",
+  "license": "MIT"
+}

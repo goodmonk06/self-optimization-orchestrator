@@ -1,0 +1,70 @@
+// Prisma schema for Self-Optimization Orchestrator
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model RepoRecord {
+  id              String        @id @default(cuid())
+  githubFullName  String        @unique // e.g., "owner/repo-name"
+  lastAnalyzedAt  DateTime?
+  metaJson        Json?         // Additional metadata: languages, stars, etc.
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  analysisRuns    AnalysisRun[]
+
+  @@index([lastAnalyzedAt])
+  @@map("repo_records")
+}
+
+model AnalysisRun {
+  id               String         @id @default(cuid())
+  repoId           String
+  startedAt        DateTime       @default(now())
+  finishedAt       DateTime?
+  status           AnalysisStatus @default(PENDING)
+  summaryMarkdown  String?        @db.Text
+  suggestionsJson  Json?          // Array of improvement suggestions
+  errorMessage     String?        @db.Text
+
+  repo             RepoRecord     @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  createdActions   CreatedAction[]
+
+  @@index([repoId, startedAt])
+  @@index([status])
+  @@map("analysis_runs")
+}
+
+model CreatedAction {
+  id          String       @id @default(cuid())
+  runId       String
+  type        ActionType
+  targetUrl   String?      // URL of created issue/PR
+  payloadJson Json?        // Full payload sent to GitHub
+  createdAt   DateTime     @default(now())
+
+  run         AnalysisRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([type])
+  @@map("created_actions")
+}
+
+enum AnalysisStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum ActionType {
+  ISSUE
+  PR_DRAFT
+  DOC
+}
