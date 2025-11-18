@@ -1,4 +1,5 @@
 // Prisma schema for Self-Optimization Orchestrator
+// Phase 3: Expanded domain model with rich entities and relationships
 
 generator client {
   provider = "prisma-client-js"
@@ -9,17 +10,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================================
+// CORE ENTITIES
+// ============================================================================
+
 model RepoRecord {
   id              String        @id @default(cuid())
   githubFullName  String        @unique // e.g., "owner/repo-name"
   lastAnalyzedAt  DateTime?
   metaJson        Json?         // Additional metadata: languages, stars, etc.
+  priority        RepoPriority  @default(NORMAL)
+  isArchived      Boolean       @default(false)
+  configJson      Json?         // Custom configuration per repo
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  analysisRuns    AnalysisRun[]
+  // Relationships
+  analysisRuns      AnalysisRun[]
+  tags              RepoTag[]
+  schedules         AnalysisSchedule[]
+  healthSnapshots   HealthSnapshot[]
 
   @@index([lastAnalyzedAt])
+  @@index([priority])
+  @@index([isArchived])
   @@map("repo_records")
 }
 
@@ -32,12 +46,18 @@ model AnalysisRun {
   summaryMarkdown  String?        @db.Text
   suggestionsJson  Json?          // Array of improvement suggestions
   errorMessage     String?        @db.Text
+  templateId       String?        // Optional template used
+  triggeredBy      TriggerSource  @default(MANUAL)
 
+  // Relationships
   repo             RepoRecord     @relation(fields: [repoId], references: [id], onDelete: Cascade)
   createdActions   CreatedAction[]
+  metrics          AnalysisMetrics?
+  template         SuggestionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   @@index([repoId, startedAt])
   @@index([status])
+  @@index([triggeredBy])
   @@map("analysis_runs")
 }
 
@@ -47,24 +67,251 @@ model CreatedAction {
   type        ActionType
   targetUrl   String?      // URL of created issue/PR
   payloadJson Json?        // Full payload sent to GitHub
+  status      ActionStatus @default(PENDING)
+  completedAt DateTime?
   createdAt   DateTime     @default(now())
 
   run         AnalysisRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId])
   @@index([type])
+  @@index([status])
   @@map("created_actions")
 }
+
+// ============================================================================
+// SCHEDULING & AUTOMATION
+// ============================================================================
+
+model AnalysisSchedule {
+  id              String              @id @default(cuid())
+  repoId          String
+  cronExpression  String              // e.g., "0 0 * * *" for daily at midnight
+  isActive        Boolean             @default(true)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  timezone        String              @default("UTC")
+  templateId      String?
+  configJson      Json?               // Additional config for this schedule
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  repo            RepoRecord          @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  template        SuggestionTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([repoId])
+  @@index([isActive, nextRunAt])
+  @@map("analysis_schedules")
+}
+
+// ============================================================================
+// TAGGING & ORGANIZATION
+// ============================================================================
+
+model Tag {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  color       String?    // Hex color code
+  description String?
+  category    String?    // Optional category grouping
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  repos       RepoTag[]
+
+  @@map("tags")
+}
+
+model RepoTag {
+  id        String   @id @default(cuid())
+  repoId    String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  repo      RepoRecord @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  tag       Tag        @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, tagId])
+  @@index([repoId])
+  @@index([tagId])
+  @@map("repo_tags")
+}
+
+// ============================================================================
+// NOTIFICATIONS
+// ============================================================================
+
+model NotificationRule {
+  id              String               @id @default(cuid())
+  name            String
+  description     String?
+  isActive        Boolean              @default(true)
+  triggerEvent    NotificationTrigger
+  conditionJson   Json?                // Conditions for when to notify
+  channelType     NotificationChannel
+  channelConfig   Json                 // Channel-specific configuration
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  notifications   Notification[]
+
+  @@map("notification_rules")
+}
+
+model Notification {
+  id              String               @id @default(cuid())
+  ruleId          String
+  status          NotificationStatus   @default(PENDING)
+  eventData       Json                 // Data about the event that triggered it
+  sentAt          DateTime?
+  errorMessage    String?
+  createdAt       DateTime             @default(now())
+
+  rule            NotificationRule     @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================================
+// TEMPLATES & CUSTOMIZATION
+// ============================================================================
+
+model SuggestionTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  promptTemplate  String   @db.Text  // LLM prompt template with placeholders
+  category        String?
+  isPublic        Boolean  @default(false)
+  configJson      Json?    // Additional template configuration
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  analysisRuns    AnalysisRun[]
+  schedules       AnalysisSchedule[]
+
+  @@index([category])
+  @@index([isPublic])
+  @@map("suggestion_templates")
+}
+
+// ============================================================================
+// METRICS & ANALYTICS
+// ============================================================================
+
+model AnalysisMetrics {
+  id                  String      @id @default(cuid())
+  runId               String      @unique
+  healthScore         Int         // 0-100
+  durationMs          Int         // Time taken for analysis
+  llmTokensUsed       Int?        // Total tokens consumed
+  llmCostUsd          Float?      // Estimated cost in USD
+  githubApiCalls      Int         @default(0)
+  suggestionCount     Int         @default(0)
+  highPriorityCount   Int         @default(0)
+  mediumPriorityCount Int         @default(0)
+  lowPriorityCount    Int         @default(0)
+  createdAt           DateTime    @default(now())
+
+  run                 AnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([healthScore])
+  @@index([createdAt])
+  @@map("analysis_metrics")
+}
+
+model HealthSnapshot {
+  id              String     @id @default(cuid())
+  repoId          String
+  healthScore     Int        // 0-100
+  snapshotDate    DateTime   @default(now())
+  metaJson        Json?      // Snapshot of key metrics
+
+  repo            RepoRecord @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, snapshotDate])
+  @@map("health_snapshots")
+}
+
+// ============================================================================
+// SYSTEM & EVENTS
+// ============================================================================
+
+model SystemEvent {
+  id          String     @id @default(cuid())
+  eventType   String
+  entityType  String?    // e.g., "RepoRecord", "AnalysisRun"
+  entityId    String?
+  eventData   Json?
+  createdAt   DateTime   @default(now())
+
+  @@index([eventType])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("system_events")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
 
 enum AnalysisStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
   FAILED
+  CANCELLED
 }
 
 enum ActionType {
   ISSUE
   PR_DRAFT
   DOC
+  COMMENT
+}
+
+enum ActionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum TriggerSource {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+  API
+}
+
+enum RepoPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum NotificationTrigger {
+  ANALYSIS_COMPLETED
+  ANALYSIS_FAILED
+  HEALTH_DEGRADED
+  NEW_HIGH_PRIORITY_ISSUE
+  SCHEDULE_FAILED
+}
+
+enum NotificationChannel {
+  WEBHOOK
+  EMAIL
+  SLACK
+  DISCORD
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
 }
