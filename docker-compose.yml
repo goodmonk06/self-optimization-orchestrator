@@ -17,6 +17,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - orchestrator-network
 
   redis:
     image: redis:7-alpine
@@ -30,6 +32,58 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      - orchestrator-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: repo-orchestrator-backend
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://orchestrator:orchestrator_dev_pass@postgres:5432/repo_orchestrator?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PORT: 3001
+      NODE_ENV: production
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - orchestrator-network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: repo-orchestrator-worker
+    environment:
+      DATABASE_URL: postgresql://orchestrator:orchestrator_dev_pass@postgres:5432/repo_orchestrator?schema=public
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["node", "dist/worker.js"]
+    networks:
+      - orchestrator-network
+    restart: unless-stopped
+
+networks:
+  orchestrator-network:
+    driver: bridge
 
 volumes:
   postgres_data:

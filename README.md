@@ -1,87 +1,83 @@
 # Self-Optimization Orchestrator
 
-An automated GitHub repository health analyzer and improvement orchestrator that sits on top of all your repositories and keeps them evolving.
+An automated GitHub repository health analyzer and improvement orchestrator that continuously monitors and improves your entire repository portfolio using AI-powered analysis.
 
 ## Overview
 
-The Self-Optimization Orchestrator periodically scans your GitHub organization or user account, analyzes each repository's health, generates AI-powered improvement suggestions, and optionally creates GitHub issues for those improvements.
+The Self-Optimization Orchestrator is a production-ready system designed to sit on top of all your GitHub repositories, automatically analyzing their health, and providing intelligent improvement suggestions. It acts as an autonomous maintenance layer that helps keep your entire codebase evolving with best practices.
 
-This system runs continuously in the background, ensuring your repositories stay up-to-date with best practices for testing, documentation, security, performance, and code quality.
+**Current Phase: Phase 2 - Production Vertical Slice**
 
-## Architecture
-
-The system consists of three main components:
-
-1. **Backend API** (Fastify + TypeScript)
-   - RESTful API for managing repositories and analyses
-   - Repository discovery from GitHub
-   - Queue management for analysis jobs
-   - Integration with OpenAI for intelligent suggestions
-
-2. **Worker Process** (BullMQ)
-   - Processes analysis jobs asynchronously
-   - Fetches repository data from GitHub
-   - Analyzes code health using LLM
-   - Optionally creates GitHub issues
-
-3. **Dashboard** (Next.js)
-   - View all repositories and their health scores
-   - Trigger analyses manually
-   - View detailed analysis results
-   - Monitor queue statistics
+This implementation includes a complete, end-to-end working system with:
+- Full CRUD operations for repository management
+- Automated analysis workflow with AI-powered suggestions
+- Queue-based background processing
+- Real-time dashboard for monitoring
+- Complete test coverage and validation
+- Docker-based deployment
 
 ## Tech Stack
 
-- **Backend**: Fastify, TypeScript, Prisma, PostgreSQL
-- **Queue**: BullMQ, Redis
-- **APIs**: GitHub REST API, OpenAI API
-- **Frontend**: Next.js 14, React, Tailwind CSS
-- **Infrastructure**: Docker Compose
+### Backend
+- **Runtime**: Node.js 18+
+- **Framework**: Fastify (high-performance web framework)
+- **Language**: TypeScript (strict mode)
+- **ORM**: Prisma
+- **Database**: PostgreSQL 15
+- **Queue**: BullMQ + Redis
+- **Validation**: Zod
+- **Testing**: Vitest
 
-## Features
+### External APIs
+- **GitHub API**: Repository discovery and issue creation via Octokit
+- **OpenAI API**: GPT-4 Turbo for intelligent analysis
 
-### 1. Repository Discovery
-- Automatically fetch all repositories from your GitHub account
-- Sync repository metadata
-- Track when repositories were last analyzed
+### Frontend Dashboard
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **Markdown**: react-markdown
 
-### 2. Health Analysis
-- Analyze repository health across multiple dimensions:
-  - Test coverage (presence of test files)
-  - CI/CD configuration
-  - Open issues count
-  - Last commit date
-  - Programming languages
-  - Documentation
-- Generate health scores (0-100)
+### Infrastructure
+- **Containerization**: Docker + Docker Compose
+- **Process Management**: BullMQ workers
 
-### 3. AI-Powered Suggestions
-- Use OpenAI GPT-4 to generate intelligent improvement suggestions
-- Prioritize suggestions (low, medium, high)
-- Categorize improvements (testing, documentation, security, performance, etc.)
-- Generate ready-to-use GitHub issue bodies
+## Domain Model
 
-### 4. Action Execution
-- Automatically create GitHub issues for improvements
-- Track created actions (issues, PR drafts, documentation)
-- Link actions back to analysis runs
+### Core Entities
 
-### 5. Dashboard
-- View all repositories with their latest analysis
-- See health scores and suggestions
-- Trigger analyses manually
-- Monitor queue statistics in real-time
+**RepoRecord**
+- Represents a GitHub repository being tracked
+- Fields: `id`, `githubFullName`, `lastAnalyzedAt`, `metaJson`, timestamps
+- Relationships: Has many `AnalysisRun`
+
+**AnalysisRun**
+- Represents a single analysis execution for a repository
+- Fields: `id`, `repoId`, `status`, `startedAt`, `finishedAt`, `summaryMarkdown`, `suggestionsJson`, `errorMessage`
+- Status: `PENDING` | `IN_PROGRESS` | `COMPLETED` | `FAILED`
+- Relationships: Belongs to `RepoRecord`, has many `CreatedAction`
+
+**CreatedAction**
+- Represents an action taken based on analysis (e.g., GitHub issue created)
+- Fields: `id`, `runId`, `type`, `targetUrl`, `payloadJson`, `createdAt`
+- Type: `ISSUE` | `PR_DRAFT` | `DOC`
+- Relationships: Belongs to `AnalysisRun`
+
+### Key Relationships
+```
+RepoRecord (1) ──< (N) AnalysisRun (1) ──< (N) CreatedAction
+```
 
 ## Getting Started
 
-### Prerequisites
+### Requirements
 
-- Node.js 18+ and npm
-- Docker and Docker Compose (for PostgreSQL and Redis)
-- GitHub Personal Access Token
-- OpenAI API Key
+- **Node.js**: 18.x or higher
+- **Docker**: For PostgreSQL, Redis, and optional full-stack deployment
+- **GitHub Token**: Personal access token with `repo` and `read:org` scopes
+- **OpenAI API Key**: For AI-powered analysis
 
-### Installation
+### Setup Steps
 
 1. **Clone the repository**
    ```bash
@@ -96,264 +92,459 @@ The system consists of three main components:
 
 3. **Start infrastructure services**
    ```bash
-   docker-compose up -d
+   npm run docker:up
    ```
+   This starts PostgreSQL and Redis.
 
-4. **Configure environment variables**
-
-   Backend (`backend/.env`):
+4. **Configure environment**
    ```bash
    cp backend/.env.example backend/.env
    ```
 
-   Edit `backend/.env` and set:
-   - `GITHUB_TOKEN`: Your GitHub Personal Access Token
-   - `GITHUB_ORG_OR_USER`: Your GitHub username or organization
-   - `OPENAI_API_KEY`: Your OpenAI API key
-   - `AUTO_CREATE_ISSUES`: Set to `true` to automatically create GitHub issues
+   Edit `backend/.env`:
+   ```env
+   # Database (use localhost for local dev, postgres for Docker)
+   DATABASE_URL="postgresql://orchestrator:orchestrator_dev_pass@localhost:5432/repo_orchestrator?schema=public"
 
-   Dashboard (`dashboard/.env.local`):
-   ```bash
-   cp dashboard/.env.example dashboard/.env.local
+   # Redis
+   REDIS_HOST="localhost"
+   REDIS_PORT=6379
+
+   # GitHub (REQUIRED)
+   GITHUB_TOKEN="ghp_your_token_here"
+   GITHUB_ORG_OR_USER="your_github_username"
+
+   # OpenAI (REQUIRED)
+   OPENAI_API_KEY="sk-your_key_here"
+
+   # Server
+   PORT=3001
+   NODE_ENV="development"
+
+   # Features
+   AUTO_CREATE_ISSUES=false  # Set to true to auto-create GitHub issues
    ```
 
-5. **Set up the database**
+5. **Setup database and seed data**
    ```bash
-   cd backend
-   npx prisma migrate dev
-   npx prisma generate
-   cd ..
+   npm run setup
    ```
+   This runs: install → generate Prisma client → push schema → seed demo data
 
-6. **Start the services**
+6. **Start the application**
 
-   Terminal 1 - Backend API:
+   You need 3 terminal windows:
+
+   **Terminal 1 - Backend API:**
    ```bash
    npm run dev:backend
    ```
 
-   Terminal 2 - Worker:
+   **Terminal 2 - Analysis Worker:**
    ```bash
-   cd backend
-   npm run worker
+   npm run dev:worker
    ```
 
-   Terminal 3 - Dashboard:
+   **Terminal 3 - Dashboard (optional):**
    ```bash
    npm run dev:dashboard
    ```
 
-### Usage
+7. **Verify it's working**
 
-1. **Access the dashboard**: Open http://localhost:3000
+   - API Health: http://localhost:3001/health
+   - View repos: http://localhost:3001/api/repos
+   - Dashboard: http://localhost:3000 (if running)
 
-2. **Discover repositories**: Click "Discover Repos" to sync repositories from GitHub
+## Example Flow: End-to-End Vertical Slice
 
-3. **Analyze repositories**:
-   - Click "Analyze All" to queue all repositories for analysis
-   - Or click "Analyze" on individual repositories
+This implementation includes a complete working vertical slice for repository management and analysis:
 
-4. **View results**: Once analysis completes, view:
-   - Health scores
-   - Improvement suggestions
-   - Created GitHub issues (if enabled)
+### 1. Repository Discovery (GitHub → Database)
 
-## API Endpoints
+**Trigger:**
+```bash
+curl -X POST http://localhost:3001/api/repos/discover
+```
 
-### Repositories
+**What happens:**
+- Fetches all repositories from your GitHub account
+- Creates `RepoRecord` entries in the database
+- Returns count of new vs existing repos
 
-- `GET /api/repos` - List all repositories
-- `GET /api/repos/:id` - Get repository details
-- `POST /api/repos/discover` - Discover and sync repositories from GitHub
-- `POST /api/repos/:id/analyze` - Queue analysis for a repository
-- `POST /api/repos/analyze-all` - Queue analysis for all repositories
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "total": 25,
+    "new": 3,
+    "existing": 22
+  }
+}
+```
 
-### Analysis
+### 2. Manual Repository CRUD
 
-- `GET /api/analysis/:id` - Get analysis details
+**Create a repository:**
+```bash
+curl -X POST http://localhost:3001/api/repos \
+  -H "Content-Type: application/json" \
+  -d '{
+    "githubFullName": "myorg/myrepo",
+    "metaJson": {"description": "Test repo"}
+  }'
+```
 
-### Queue
+**List repositories (with pagination):**
+```bash
+curl "http://localhost:3001/api/repos?page=1&limit=10&status=analyzed"
+```
 
-- `GET /api/queue/stats` - Get queue statistics
+**Get specific repository:**
+```bash
+curl http://localhost:3001/api/repos/{id}
+```
 
-### Health
+**Update repository:**
+```bash
+curl -X PATCH http://localhost:3001/api/repos/{id} \
+  -H "Content-Type: application/json" \
+  -d '{"metaJson": {"stars": 100}}'
+```
 
-- `GET /health` - Health check endpoint
+**Delete repository:**
+```bash
+curl -X DELETE http://localhost:3001/api/repos/{id}
+```
 
-## Database Schema
+### 3. Trigger Analysis (API → Queue → Worker)
 
-### RepoRecord
-- Stores repository metadata
-- Tracks last analysis time
-- Links to analysis runs
+**Trigger analysis for one repo:**
+```bash
+curl -X POST http://localhost:3001/api/repos/{id}/analyze
+```
 
-### AnalysisRun
-- Represents a single analysis execution
-- Stores analysis status, summary, and suggestions
-- Links to created actions
+**Trigger analysis for all repos:**
+```bash
+curl -X POST http://localhost:3001/api/repos/analyze-all
+```
 
-### CreatedAction
-- Tracks actions taken (issues created, etc.)
-- Stores GitHub URLs and payloads
+**What happens:**
+1. Job added to BullMQ queue
+2. Worker picks up job
+3. Fetches repo data from GitHub (languages, tests, CI/CD, etc.)
+4. Sends data to OpenAI GPT-4 for analysis
+5. Receives health score and 3 improvement suggestions
+6. Stores results in `AnalysisRun`
+7. Optionally creates GitHub issues via `CreatedAction`
 
-## Configuration
+### 4. View Results (Database → API → Dashboard)
 
-### Environment Variables
+**Get analysis results:**
+```bash
+curl http://localhost:3001/api/analysis/{analysisId}
+```
 
-**Backend:**
-- `DATABASE_URL`: PostgreSQL connection string
-- `REDIS_HOST`: Redis host (default: localhost)
-- `REDIS_PORT`: Redis port (default: 6379)
-- `GITHUB_TOKEN`: GitHub Personal Access Token (required)
-- `GITHUB_ORG_OR_USER`: GitHub username or organization (required)
-- `OPENAI_API_KEY`: OpenAI API key (required)
-- `PORT`: API server port (default: 3001)
-- `AUTO_CREATE_ISSUES`: Auto-create GitHub issues (default: false)
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "clh...",
+    "status": "COMPLETED",
+    "summaryMarkdown": "# Analysis Summary...",
+    "suggestionsJson": [
+      {
+        "title": "Add comprehensive test coverage",
+        "description": "...",
+        "priority": "high",
+        "category": "testing",
+        "issueBody": "..."
+      }
+    ],
+    "repo": {
+      "githubFullName": "myorg/myrepo"
+    },
+    "createdActions": []
+  }
+}
+```
 
-**Dashboard:**
-- `NEXT_PUBLIC_API_URL`: Backend API URL (default: http://localhost:3001)
+**View in Dashboard:**
+- Navigate to http://localhost:3000
+- See all repos with health scores
+- Click "View full analysis" for detailed results
+- Monitor queue stats in real-time
 
-### GitHub Token Permissions
+### 5. Seed Data Demo
 
-Your GitHub token needs the following scopes:
-- `repo` (full control of private repositories)
-- `read:org` (read organization data)
+The seed script (`npm run db:seed`) creates realistic demo data:
+- 5 sample repositories (React, TypeScript, Next.js, Node.js, Prisma)
+- 3 analysis runs with different statuses
+- Sample suggestions and actions
+- Demonstrates the complete data model
 
-### OpenAI Model
+**Demo URLs:**
+```bash
+# List all repos with demo data
+http://localhost:3001/api/repos
 
-The system uses `gpt-4-turbo-preview` by default. You can change this in `backend/src/llm-service.ts`.
+# View completed analysis
+http://localhost:3001/api/analysis/{id}  # Get ID from repos response
 
-## Production Deployment
+# Queue statistics
+http://localhost:3001/api/queue/stats
+```
 
-### Backend
+## API Reference
 
-1. Build the backend:
-   ```bash
-   cd backend
-   npm run build
-   ```
+### Repository Endpoints
 
-2. Run database migrations:
-   ```bash
-   npx prisma migrate deploy
-   ```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/repos` | List repositories (paginated, filterable) |
+| POST | `/api/repos` | Create new repository |
+| GET | `/api/repos/:id` | Get repository by ID |
+| PATCH | `/api/repos/:id` | Update repository |
+| DELETE | `/api/repos/:id` | Delete repository |
+| POST | `/api/repos/discover` | Sync repos from GitHub |
+| POST | `/api/repos/:id/analyze` | Trigger analysis for one repo |
+| POST | `/api/repos/analyze-all` | Trigger analysis for all repos |
 
-3. Start the API server:
-   ```bash
-   npm start
-   ```
+### Analysis Endpoints
 
-4. Start the worker:
-   ```bash
-   npm run worker
-   ```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/analysis/:id` | Get analysis by ID |
+| GET | `/api/repos/:repoId/analysis` | Get all analyses for a repo |
+| GET | `/api/queue/stats` | Get queue statistics |
 
-### Dashboard
+### Query Parameters
 
-1. Build the dashboard:
-   ```bash
-   cd dashboard
-   npm run build
-   ```
+**Pagination (`/api/repos`):**
+- `page` (number, default: 1)
+- `limit` (number, default: 20, max: 100)
 
-2. Start the production server:
-   ```bash
-   npm start
-   ```
+**Filtering (`/api/repos`):**
+- `status` (enum: `analyzed` | `pending` | `all`)
+- `search` (string: search in repository name)
 
-### Docker
+## Testing
 
-A production `Dockerfile` can be added for containerized deployment.
+### Run Tests
 
-## Monitoring
+```bash
+# Run all tests
+npm test
 
-- **Queue Stats**: Real-time queue statistics in the dashboard
-- **Logs**: Server and worker logs in the console
-- **Database**: Use Prisma Studio to inspect data: `npm run db:studio`
+# Watch mode
+npm run test:watch
 
-## Customization
+# In backend directory
+cd backend
+npm test
+```
 
-### Analysis Criteria
+### Test Coverage
 
-Modify `backend/src/llm-service.ts` to customize:
-- Analysis prompt
-- Suggestion categories
-- Health score calculation
+Current test coverage includes:
+- **Validation layer**: Zod schema validation tests
+- **Error handling**: Custom error class tests
+- **Domain logic**: Repository and analysis business logic
 
-### GitHub Client
+Test files:
+- `backend/src/__tests__/validation.test.ts`
+- `backend/src/__tests__/errors.test.ts`
 
-Extend `backend/src/github-client.ts` to:
-- Add more repository checks
-- Fetch additional metadata
-- Customize issue creation
+## Deployment
 
-### Worker Concurrency
+### Docker Compose (Recommended)
 
-Adjust worker settings in `backend/src/worker.ts`:
-- Concurrency (parallel jobs)
-- Rate limits
-- Retry strategies
+Full-stack deployment with all services:
 
-## Troubleshooting
+```bash
+# Build and start all services
+npm run docker:build
+npm run docker:up
 
-### Database Connection Issues
-- Ensure PostgreSQL is running: `docker-compose ps`
-- Check `DATABASE_URL` in `.env`
+# View logs
+npm run docker:logs
 
-### Redis Connection Issues
-- Ensure Redis is running: `docker-compose ps`
-- Check Redis host/port configuration
+# Stop services
+npm run docker:down
+```
 
-### GitHub API Rate Limits
-- The system respects GitHub API rate limits
-- Use a token with higher limits if needed
-- Adjust worker concurrency to reduce API calls
+Services included:
+- `postgres` - PostgreSQL database
+- `redis` - Redis for queue
+- `backend` - Fastify API server
+- `worker` - BullMQ analysis worker
 
-### OpenAI API Errors
-- Check API key validity
-- Monitor usage limits
-- Adjust model selection if needed
+### Manual Deployment
+
+**Build:**
+```bash
+npm run build
+```
+
+**Start production server:**
+```bash
+cd backend
+npm start
+```
+
+**Start production worker:**
+```bash
+cd backend
+node dist/worker.js
+```
 
 ## Development
 
-### Database Changes
+### Project Structure
 
-1. Modify `backend/prisma/schema.prisma`
-2. Create migration: `npx prisma migrate dev --name your_migration_name`
-3. Generate client: `npx prisma generate`
+```
+self-optimization-orchestrator/
+├── backend/
+│   ├── src/
+│   │   ├── routes/           # Route handlers
+│   │   │   ├── repos.ts      # Repository CRUD + actions
+│   │   │   └── analysis.ts   # Analysis endpoints
+│   │   ├── __tests__/        # Test files
+│   │   ├── config.ts         # Configuration
+│   │   ├── db.ts             # Database connection
+│   │   ├── errors.ts         # Error classes + handler
+│   │   ├── validation.ts     # Zod schemas
+│   │   ├── github-client.ts  # GitHub API client
+│   │   ├── llm-service.ts    # OpenAI integration
+│   │   ├── queue.ts          # BullMQ setup
+│   │   ├── worker.ts         # Background worker
+│   │   ├── seed.ts           # Database seeding
+│   │   ├── types.ts          # TypeScript types
+│   │   └── index.ts          # Fastify app entry
+│   ├── prisma/
+│   │   └── schema.prisma     # Database schema
+│   ├── Dockerfile            # Backend Docker image
+│   └── package.json
+├── dashboard/
+│   └── src/
+│       └── app/
+│           ├── page.tsx               # Home page
+│           └── analysis/[id]/page.tsx # Detail page
+├── docker-compose.yml        # Full-stack orchestration
+├── package.json              # Root scripts
+└── README.md
+```
 
-### Adding New Analysis Checks
+### Key Scripts
 
-1. Update `RepoData` interface in `backend/src/types.ts`
-2. Add check logic in `backend/src/github-client.ts`
-3. Update LLM prompt in `backend/src/llm-service.ts`
+```bash
+# Development
+npm run dev:backend       # Start API server
+npm run dev:worker        # Start analysis worker
+npm run dev:dashboard     # Start Next.js dashboard
 
-## License
+# Database
+npm run db:migrate        # Run migrations
+npm run db:push           # Push schema changes
+npm run db:seed           # Seed demo data
+npm run db:studio         # Open Prisma Studio
 
-MIT
+# Testing
+npm test                  # Run tests
+npm run lint              # Type checking
+
+# Docker
+npm run docker:up         # Start services
+npm run docker:down       # Stop services
+npm run docker:build      # Build images
+npm run docker:logs       # View logs
+
+# Production
+npm run build             # Build all
+npm run setup             # First-time setup
+```
+
+## Future Extensions
+
+This Phase 2 implementation provides a solid foundation for future enhancements:
+
+### Planned Features
+- **Scheduled Analysis**: Cron-based automatic periodic analysis
+- **Notifications**: Slack/Discord/Email notifications for completed analyses
+- **Custom Rules**: User-defined analysis criteria and thresholds
+- **Trend Analytics**: Track health scores over time
+- **Automated PRs**: Not just issues, but full PR creation with fixes
+- **Multi-org Support**: Analyze repositories across multiple organizations
+- **Team Collaboration**: Assign suggestions to team members
+- **Integration Hub**: Connect with Jira, Linear, Asana for task management
+- **Advanced Metrics**: Code quality scores from ESLint, SonarQube integration
+- **Cost Tracking**: Monitor OpenAI API usage and costs
+- **Batch Operations**: Bulk approve/reject suggestions
+- **Custom LLM Prompts**: Configurable analysis prompts per repository
+
+### Architecture Improvements
+- **Event Sourcing**: Complete audit trail of all changes
+- **CQRS Pattern**: Separate read/write models for better scalability
+- **GraphQL API**: Alternative to REST for more flexible querying
+- **Real-time Updates**: WebSocket support for live dashboard updates
+- **Multi-tenancy**: Support multiple organizations with isolation
+- **Rate Limiting**: Per-user/per-org API rate limits
+- **Caching Layer**: Redis caching for frequently accessed data
+
+## Troubleshooting
+
+### Common Issues
+
+**Database connection error:**
+```bash
+# Ensure PostgreSQL is running
+docker compose ps
+
+# Check connection string in .env
+cat backend/.env | grep DATABASE_URL
+```
+
+**Redis connection error:**
+```bash
+# Ensure Redis is running
+docker compose ps
+
+# Check Redis config
+cat backend/.env | grep REDIS
+```
+
+**Worker not processing jobs:**
+```bash
+# Check worker is running
+ps aux | grep worker
+
+# Check queue stats
+curl http://localhost:3001/api/queue/stats
+
+# View worker logs
+npm run docker:logs worker
+```
+
+**GitHub API rate limit:**
+- Use authenticated token (increases limit to 5000/hour)
+- Check current rate limit: https://api.github.com/rate_limit
+- Reduce worker concurrency in `backend/src/worker.ts`
+
+**OpenAI API errors:**
+- Verify API key is valid
+- Check usage limits: https://platform.openai.com/usage
+- Monitor costs and set up billing alerts
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-## Philosophy
+## License
 
-This orchestrator embodies the principle of continuous improvement. Rather than letting repositories stagnate, it actively monitors and suggests improvements, ensuring your entire codebase evolves with best practices.
+MIT License - see [LICENSE](./LICENSE) for details
 
-The system is designed to be:
-- **Proactive**: Automatically discovers and analyzes repositories
-- **Intelligent**: Uses AI to provide contextual, actionable suggestions
-- **Non-intrusive**: Suggestions are optional; you control when to act
-- **Scalable**: Handles multiple repositories efficiently
-- **Transparent**: Full visibility into analyses and actions
+---
 
-## Future Enhancements
-
-Potential future features:
-- Scheduled cron-based analysis
-- Slack/Discord notifications
-- Custom analysis rules
-- Integration with code quality tools (ESLint, SonarQube)
-- Automated PR creation (not just issues)
-- Team collaboration features
-- Analytics and trends over time
+**Built with the philosophy of continuous improvement. Let your repositories evolve automatically.**

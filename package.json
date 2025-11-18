@@ -8,12 +8,26 @@
     "dashboard"
   ],
   "scripts": {
+    "dev": "echo 'Run dev:backend and dev:dashboard in separate terminals'",
     "dev:backend": "npm run dev --workspace=backend",
     "dev:dashboard": "npm run dev --workspace=dashboard",
+    "dev:worker": "npm run worker --workspace=backend",
+    "build": "npm run build:backend && npm run build:dashboard",
     "build:backend": "npm run build --workspace=backend",
     "build:dashboard": "npm run build --workspace=dashboard",
+    "test": "npm run test --workspace=backend",
+    "test:watch": "npm run test:watch --workspace=backend",
+    "lint": "npm run lint --workspace=backend",
     "db:migrate": "npm run db:migrate --workspace=backend",
-    "db:studio": "npm run db:studio --workspace=backend"
+    "db:push": "npm run db:push --workspace=backend",
+    "db:generate": "npm run db:generate --workspace=backend",
+    "db:studio": "npm run db:studio --workspace=backend",
+    "db:seed": "npm run db:seed --workspace=backend",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:build": "docker compose build",
+    "setup": "npm install && npm run db:generate && npm run db:push && npm run db:seed"
   },
   "keywords": [
     "github",
